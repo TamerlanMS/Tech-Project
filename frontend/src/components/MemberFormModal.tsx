@@ -134,11 +134,12 @@ export default function MemberFormModal({ orgId, open, member, onClose }: Props)
       onCancel={onClose}
       confirmLoading={saving}
       destroyOnHidden
+      zIndex={1100} // модалка открывается и поверх карточки (Drawer)
       width={520}
     >
-      {formError && <Alert type="error" showIcon message={formError} style={{ marginBottom: 16 }} />}
+      {formError && <Alert type="error" showIcon title={formError} style={{ marginBottom: 16 }} />}
       {(roles.isError || branches.isError) && (
-        <Alert type="warning" showIcon message="Не удалось загрузить роли или филиалы" style={{ marginBottom: 16 }} />
+        <Alert type="warning" showIcon title="Не удалось загрузить роли или филиалы" style={{ marginBottom: 16 }} />
       )}
       {isEdit && member && (
         <Space style={{ marginBottom: 16 }}>
@@ -151,7 +152,7 @@ export default function MemberFormModal({ orgId, open, member, onClose }: Props)
       )}
       {isSelf && (
         <Alert type="info" showIcon style={{ marginBottom: 16 }}
-          message="Это ваш профиль: собственную роль и статус изменить нельзя." />
+          title="Это ваш профиль: собственную роль и статус изменить нельзя." />
       )}
       <Form form={form} layout="vertical" requiredMark="optional" onFinish={submit}>
         {!isEdit && (

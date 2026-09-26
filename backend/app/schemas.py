@@ -151,3 +151,9 @@ class Page(BaseModel, Generic[T]):
     def build(cls, items: list[T], total: int, page: int, page_size: int) -> "Page[T]":
         return cls(items=items, total=total, page=page, page_size=page_size,
                    pages=math.ceil(total / page_size) if total else 0)
+
+
+class MemberPage(Page[MemberOut]):
+    status_counts: dict[MembershipStatus, int] = Field(
+        description="Количество по статусам с учётом остальных фильтров (для вкладок)"
+    )

@@ -1,5 +1,5 @@
 import { DeleteOutlined, EditOutlined } from '@ant-design/icons'
-import { Alert, Button, Descriptions, Drawer, Empty, Result, Skeleton, Space, Tag, Typography } from 'antd'
+import { Alert, Button, Drawer, Result, Skeleton, Typography } from 'antd'
 import { ApiError } from '../api/client'
 import { useMember } from '../api/hooks'
 import type { Member } from '../api/types'
@@ -21,54 +21,65 @@ export default function MemberDrawer({ orgId, userId, onClose, onEdit, onDelete 
     <Drawer
       open={!!userId}
       onClose={onClose}
-      size={480}
-      title="Информация о пользователе"
-      extra={m?.can_manage && (
-        <Space>
-          <Button icon={<EditOutlined />} onClick={() => onEdit(m)}>Изменить</Button>
-          <Button danger icon={<DeleteOutlined />} onClick={() => onDelete(m)} aria-label="Удалить" />
-        </Space>
+      size={460}
+      title={<span className="muted" style={{ fontWeight: 400, fontSize: 13 }}>Карточка сотрудника</span>}
+      footer={m?.can_manage && (
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between' }}>
+          <Button danger type="text" icon={<DeleteOutlined />} onClick={() => onDelete(m)}>Удалить из организации</Button>
+          <Button type="primary" icon={<EditOutlined />} onClick={() => onEdit(m)}>Изменить</Button>
+        </div>
       )}
     >
       {isLoading ? (
         <Skeleton avatar active paragraph={{ rows: 8 }} />
       ) : gone ? (
-        <Result status="404" title="Пользователь не найден" subTitle="Возможно, он уже удалён из организации." />
+        <Result status="404" title="Пользователь не найден" subTitle="Возможно, его уже удалили из организации." />
       ) : isError ? (
         <Result status="error" title="Не удалось загрузить" subTitle={error.message}
           extra={<Button onClick={() => refetch()}>Повторить</Button>} />
       ) : m ? (
         <>
-          <Space size={16} style={{ marginBottom: 24 }}>
-            <UserAvatar name={m.full_name} size={56} />
-            <div>
-              <Typography.Title level={4} style={{ margin: 0 }}>{m.full_name}</Typography.Title>
-              <Typography.Text type="secondary">{m.position ?? 'Должность не указана'}</Typography.Text>
+          <div style={{ display: 'flex', gap: 16, alignItems: 'center', marginBottom: 24 }}>
+            <UserAvatar name={m.full_name} size={60} />
+            <div style={{ minWidth: 0 }}>
+              <h2 style={{ margin: 0, fontSize: 22, fontWeight: 600, letterSpacing: '-0.02em' }}>{m.full_name}</h2>
+              <div className="muted">{m.position ?? 'Должность не указана'}</div>
             </div>
-          </Space>
+          </div>
           {!m.account_activated && (
-            <Alert type="info" showIcon style={{ marginBottom: 16 }}
-              message="Пользователь ещё не активировал аккаунт" />
+            <Alert type="warning" showIcon style={{ marginBottom: 16 }}
+              title="Приглашение отправлено, но аккаунт ещё не активирован" />
           )}
-          <Descriptions column={1} size="small" bordered styles={{ label: { width: 150 } }}>
-            <Descriptions.Item label="Email"><Typography.Text copyable>{m.email}</Typography.Text></Descriptions.Item>
-            <Descriptions.Item label="Телефон">{m.phone ?? '—'}</Descriptions.Item>
-            <Descriptions.Item label="Роль"><RoleTag role={m.role} /></Descriptions.Item>
-            <Descriptions.Item label="Филиалы">
-              {m.branches.length ? m.branches.map((b) => <Tag key={b.id}>{b.name}</Tag>) : '—'}
-            </Descriptions.Item>
-            <Descriptions.Item label="Статус"><StatusBadge status={m.status} /></Descriptions.Item>
-            <Descriptions.Item label="В организации с">{formatDateTime(m.joined_at)}</Descriptions.Item>
-            <Descriptions.Item label="Изменён">{formatDateTime(m.updated_at)}</Descriptions.Item>
-            <Descriptions.Item label="Пригласил">{m.invited_by?.full_name ?? '—'}</Descriptions.Item>
-          </Descriptions>
-          <Typography.Title level={5} style={{ marginTop: 24 }}>Права в организации</Typography.Title>
+          <dl className="kv">
+            <dt>Email</dt>
+            <dd><Typography.Text copyable style={{ color: 'inherit' }}>{m.email}</Typography.Text></dd>
+            <dt>Телефон</dt>
+            <dd className="num">{m.phone ?? <span className="muted">—</span>}</dd>
+            <dt>Роль</dt>
+            <dd><RoleTag role={m.role} /></dd>
+            <dt>Филиалы</dt>
+            <dd style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {m.branches.length ? m.branches.map((b) => <span key={b.id} className="chip">{b.name}</span>) : <span className="muted">Не назначен</span>}
+            </dd>
+            <dt>Статус</dt>
+            <dd><StatusBadge status={m.status} /></dd>
+            <dt>В компании с</dt>
+            <dd className="num">{formatDateTime(m.joined_at)}</dd>
+            <dt>Изменён</dt>
+            <dd className="num">{formatDateTime(m.updated_at)}</dd>
+            <dt>Пригласил</dt>
+            <dd>{m.invited_by?.full_name ?? <span className="muted">—</span>}</dd>
+          </dl>
+
+          <div className="rail__section" style={{ padding: '28px 0 10px' }}>Права в этой организации</div>
           {m.permissions.length ? (
-            <Space size={[4, 8]} wrap>
-              {m.permissions.map((p) => <Tag key={p} color="blue" variant="filled">{PERMISSION_LABELS[p] ?? p}</Tag>)}
-            </Space>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {m.permissions.map((p) => (
+                <span key={p} className={`chip ${p.endsWith('.manage') ? 'chip--accent' : ''}`}>{PERMISSION_LABELS[p] ?? p}</span>
+              ))}
+            </div>
           ) : (
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Нет прав" />
+            <span className="muted">Нет прав</span>
           )}
         </>
       ) : null}

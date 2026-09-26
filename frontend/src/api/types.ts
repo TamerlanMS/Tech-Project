@@ -71,6 +71,10 @@ export interface Page<T> {
   pages: number
 }
 
+export interface MemberPage extends Page<Member> {
+  status_counts: Record<MembershipStatus, number>
+}
+
 export interface MemberListParams {
   page: number
   page_size: number

@@ -1,20 +1,21 @@
 import {
-  AppstoreOutlined,
   BarChartOutlined,
-  DownOutlined,
+  CheckOutlined,
   InboxOutlined,
   LogoutOutlined,
+  MenuOutlined,
   SwapOutlined,
   TeamOutlined,
 } from '@ant-design/icons'
-import { Button, Dropdown, Grid, Layout, Menu, Result, Select, Spin, Typography } from 'antd'
-import { createContext, useContext, type ReactNode } from 'react'
+import { Button, Drawer, Dropdown, Result, Spin, Tooltip } from 'antd'
+import { createContext, useContext, useState, type ReactNode } from 'react'
 import { Outlet, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ApiError } from '../api/client'
 import { useMyOrganizations, useOrganization } from '../api/hooks'
 import type { Organization } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 import { UserAvatar } from '../lib/format'
+import ThemeSwitch from '../theme/ThemeSwitch'
 
 const OrgContext = createContext<Organization | null>(null)
 
@@ -25,14 +26,104 @@ export function useCurrentOrg(): Organization {
   return org
 }
 
-export default function OrgLayout() {
-  const { orgId = '' } = useParams()
+interface NavItem {
+  key: string
+  label: string
+  icon: ReactNode
+  module: string
+  ready: boolean
+}
+
+// Пункты меню = модули платформы; показываются только подключённые организацией
+const NAV: NavItem[] = [
+  { key: 'users', label: 'Пользователи', icon: <TeamOutlined />, module: 'core', ready: true },
+  { key: 'crm', label: 'CRM', icon: <BarChartOutlined />, module: 'crm', ready: false },
+  { key: 'warehouse', label: 'Склад', icon: <InboxOutlined />, module: 'warehouse', ready: false },
+]
+
+function Rail({ org, onNavigate }: { org: Organization; onNavigate?: () => void }) {
   const navigate = useNavigate()
   const location = useLocation()
   const { user, logout } = useAuth()
-  const screens = Grid.useBreakpoint()
-  const orgQuery = useOrganization(orgId)
   const myOrgs = useMyOrganizations()
+  const current = location.pathname.split('/')[3] ?? 'users'
+  const go = (path: string) => {
+    navigate(path)
+    onNavigate?.()
+  }
+
+  const orgMenu = [
+    ...(myOrgs.data ?? []).map((o) => ({
+      key: o.id,
+      label: (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 200 }}>
+          <span className="monogram" style={{ width: 24, height: 24, fontSize: 12 }}>{o.name[0]}</span>
+          <span style={{ flex: 1 }}>
+            <div>{o.name}</div>
+            <div className="muted" style={{ fontSize: 12 }}>{o.role.name}</div>
+          </span>
+          {o.id === org.id && <CheckOutlined />}
+        </div>
+      ),
+      onClick: () => go(`/orgs/${o.id}/users`),
+    })),
+    { type: 'divider' as const },
+    { key: 'all', icon: <SwapOutlined />, label: 'Все организации', onClick: () => go('/orgs') },
+  ]
+
+  return (
+    <>
+      <Dropdown menu={{ items: orgMenu }} trigger={['click']}>
+        <button type="button" className="rail__org" aria-label="Сменить организацию">
+          <span className="monogram">{org.name[0]}</span>
+          <span style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{org.name}</div>
+            <div className="muted" style={{ fontSize: 12 }}>Организация</div>
+          </span>
+          <SwapOutlined className="muted" />
+        </button>
+      </Dropdown>
+
+      <div className="rail__section">Модули</div>
+      <nav>
+        {NAV.filter((n) => org.modules.includes(n.module)).map((n) => (
+          <button
+            key={n.key}
+            type="button"
+            className="nav-item"
+            aria-current={current === n.key ? 'page' : undefined}
+            aria-disabled={!n.ready}
+            onClick={() => n.ready && go(`/orgs/${org.id}/${n.key}`)}
+          >
+            {n.icon}
+            {n.label}
+            {!n.ready && <span className="nav-item__soon">скоро</span>}
+          </button>
+        ))}
+      </nav>
+
+      <div className="rail__footer">
+        <ThemeSwitch block />
+        <div className="me">
+          <UserAvatar name={user?.full_name ?? '?'} size={30} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="me__name">{user?.full_name}</div>
+            <div className="me__role">{org.role.name}</div>
+          </div>
+          <Tooltip title="Выйти">
+            <Button type="text" size="small" icon={<LogoutOutlined />} onClick={logout} aria-label="Выйти" />
+          </Tooltip>
+        </div>
+      </div>
+    </>
+  )
+}
+
+export default function OrgLayout() {
+  const { orgId = '' } = useParams()
+  const navigate = useNavigate()
+  const [menuOpen, setMenuOpen] = useState(false)
+  const orgQuery = useOrganization(orgId)
 
   if (orgQuery.isLoading) {
     return <div style={{ height: '100vh', display: 'grid', placeItems: 'center' }}><Spin size="large" /></div>
@@ -41,77 +132,44 @@ export default function OrgLayout() {
     const e = orgQuery.error
     const notFound = e instanceof ApiError && (e.status === 404 || e.status === 403)
     return (
-      <Result
-        status={notFound ? '404' : 'error'}
-        title={notFound ? 'Организация недоступна' : 'Ошибка загрузки'}
-        subTitle={e.message}
-        extra={[
-          <Button key="orgs" type="primary" onClick={() => navigate('/orgs')}>К списку организаций</Button>,
-          !notFound && <Button key="retry" onClick={() => orgQuery.refetch()}>Повторить</Button>,
-        ]}
-      />
+      <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center' }}>
+        <Result
+          status={notFound ? '404' : 'error'}
+          title={notFound ? 'Организация недоступна' : 'Ошибка загрузки'}
+          subTitle={e.message}
+          extra={[
+            <Button key="orgs" type="primary" onClick={() => navigate('/orgs')}>К списку организаций</Button>,
+            !notFound && <Button key="retry" onClick={() => orgQuery.refetch()}>Повторить</Button>,
+          ]}
+        />
+      </div>
     )
   }
   const org = orgQuery.data!
-  const enabled = new Set(org.modules)
-
-  // Меню собирается из подключённых модулей организации
-  const menuItems = [
-    { key: 'users', icon: <TeamOutlined />, label: 'Пользователи' },
-    enabled.has('crm') && { key: 'crm', icon: <BarChartOutlined />, label: 'CRM', disabled: true },
-    enabled.has('warehouse') && { key: 'warehouse', icon: <InboxOutlined />, label: 'Склад', disabled: true },
-  ].filter(Boolean) as { key: string; icon: ReactNode; label: string; disabled?: boolean }[]
-
-  const selected = location.pathname.split('/')[3] ?? 'users'
 
   return (
     <OrgContext.Provider value={org}>
-      <Layout style={{ minHeight: '100vh' }}>
-        <Layout.Sider breakpoint="lg" collapsedWidth={0} width={220} theme="light"
-          zeroWidthTriggerStyle={{ top: 12, borderRadius: '0 8px 8px 0' }}
-          style={{ borderRight: '1px solid #f0f0f0' }}>
-          <div style={{ padding: '18px 20px', fontWeight: 600, fontSize: 16, display: 'flex', gap: 8, alignItems: 'center' }}>
-            <AppstoreOutlined style={{ color: '#1677ff' }} /> B2B Platform
-          </div>
-          <Menu mode="inline" selectedKeys={[selected]} items={menuItems}
-            onClick={({ key }) => navigate(`/orgs/${org.id}/${key}`)} style={{ borderInlineEnd: 0 }} />
-        </Layout.Sider>
-        <Layout>
-          <Layout.Header style={{
-            background: '#fff', borderBottom: '1px solid #f0f0f0', padding: screens.lg ? '0 16px' : '0 16px 0 56px',
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
-          }}>
-            <Select
-              value={org.id}
-              style={{ minWidth: 200, maxWidth: 320 }}
-              suffixIcon={<SwapOutlined />}
-              loading={myOrgs.isLoading}
-              options={(myOrgs.data ?? [{ id: org.id, name: org.name }]).map((o) => ({ value: o.id, label: o.name }))}
-              onChange={(id) => navigate(`/orgs/${id}/users`)}
-              aria-label="Организация"
-            />
-            <Dropdown menu={{ items: [
-              { key: 'orgs', icon: <SwapOutlined />, label: 'Все организации', onClick: () => navigate('/orgs') },
-              { type: 'divider' },
-              { key: 'logout', icon: <LogoutOutlined />, label: 'Выйти', danger: true, onClick: logout },
-            ] }}>
-              <Button type="text" style={{ display: 'flex', alignItems: 'center', gap: 8, height: 40 }}>
-                <UserAvatar name={user?.full_name ?? '?'} size={28} />
-                {screens.md && (
-                  <span style={{ textAlign: 'left', lineHeight: 1.2 }}>
-                    <div>{user?.full_name}</div>
-                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>{org.role.name}</Typography.Text>
-                  </span>
-                )}
-                <DownOutlined style={{ fontSize: 10 }} />
-              </Button>
-            </Dropdown>
-          </Layout.Header>
-          <Layout.Content style={{ padding: screens.md ? 24 : 12 }}>
-            <Outlet />
-          </Layout.Content>
-        </Layout>
-      </Layout>
+      <div className="shell">
+        <header className="topbar">
+          <Button type="text" icon={<MenuOutlined />} onClick={() => setMenuOpen(true)} aria-label="Меню" />
+          <span className="monogram" style={{ width: 26, height: 26, fontSize: 13 }}>{org.name[0]}</span>
+          <strong style={{ fontWeight: 600 }}>{org.name}</strong>
+        </header>
+        <aside className="rail"><Rail org={org} /></aside>
+        <Drawer
+          open={menuOpen}
+          onClose={() => setMenuOpen(false)}
+          placement="left"
+          size={272}
+          closable={false}
+          styles={{ body: { padding: 0, display: 'flex', flexDirection: 'column', background: 'var(--bg)' } }}
+        >
+          <Rail org={org} onNavigate={() => setMenuOpen(false)} />
+        </Drawer>
+        <main className="main">
+          <Outlet />
+        </main>
+      </div>
     </OrgContext.Provider>
   )
 }

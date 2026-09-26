@@ -2,14 +2,13 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { api } from './client'
 import type {
   Branch,
-  Member,
   MemberCreate,
   MemberDetail,
   MemberListParams,
+  MemberPage,
   MemberUpdate,
   MyOrganization,
   Organization,
-  Page,
   Role,
 } from './types'
 
@@ -49,7 +48,7 @@ export const useMembers = (orgId: string, params: MemberListParams, enabled = tr
   useQuery({
     queryKey: qk.memberList(orgId, params),
     queryFn: ({ signal }) =>
-      api<Page<Member>>(`/organizations/${orgId}/users`, { query: { ...params }, signal }),
+      api<MemberPage>(`/organizations/${orgId}/users`, { query: { ...params }, signal }),
     placeholderData: keepPreviousData, // таблица не «мигает» при смене страницы/фильтра
     enabled,
   })

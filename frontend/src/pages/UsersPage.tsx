@@ -1,4 +1,5 @@
 import {
+  CloseOutlined,
   DeleteOutlined,
   EditOutlined,
   EyeOutlined,
@@ -7,22 +8,7 @@ import {
   ReloadOutlined,
   SearchOutlined,
 } from '@ant-design/icons'
-import {
-  App,
-  Button,
-  Card,
-  Dropdown,
-  Empty,
-  Flex,
-  Input,
-  Result,
-  Select,
-  Space,
-  Table,
-  Tag,
-  Tooltip,
-  Typography,
-} from 'antd'
+import { App, Button, Dropdown, Empty, Input, Result, Select, Table, Tooltip } from 'antd'
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table'
 import type { SorterResult } from 'antd/es/table/interface'
 import { useEffect, useMemo, useState } from 'react'
@@ -34,6 +20,8 @@ import MemberDrawer from '../components/MemberDrawer'
 import MemberFormModal from '../components/MemberFormModal'
 import { useCurrentOrg } from '../components/OrgLayout'
 import { RoleTag, STATUS_META, StatusBadge, UserAvatar, formatDate } from '../lib/format'
+
+const STATUSES: MembershipStatus[] = ['active', 'invited', 'suspended']
 import { useDebounced } from '../lib/useDebounced'
 
 const PAGE_SIZES = [10, 20, 50, 100]
@@ -108,6 +96,10 @@ export default function UsersPage() {
   }, [data, params.page])
 
   const hasFilters = !!(params.search || params.role_id?.length || params.branch_id?.length || params.status?.length)
+  const resetAll = () => {
+    setSearchText('')
+    reset()
+  }
 
   const confirmDelete = (m: Member) =>
     modal.confirm({
@@ -116,6 +108,8 @@ export default function UsersPage() {
       okText: 'Удалить',
       okButtonProps: { danger: true },
       cancelText: 'Отмена',
+      icon: null,
+      zIndex: 1100,
       onOk: async () => {
         try {
           await remove.mutateAsync(m.user_id)
@@ -135,20 +129,20 @@ export default function UsersPage() {
   const columns: ColumnsType<Member> = [
     {
       key: 'full_name',
-      title: 'Пользователь',
+      title: 'Сотрудник',
       sorter: true,
       sortOrder: sortOrderFor('full_name'),
       render: (_, m) => (
-        <Space size={12}>
-          <UserAvatar name={m.full_name} />
+        <div className="person">
+          <UserAvatar name={m.full_name} size={34} />
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontWeight: 500 }}>
+            <div className="person__name">
               {m.full_name}
-              {!m.account_activated && <Tag style={{ marginLeft: 8 }} variant="filled">не активирован</Tag>}
+              {!m.account_activated && <span className="chip chip--outline">не активирован</span>}
             </div>
-            <Typography.Text type="secondary" style={{ fontSize: 13 }}>{m.email}</Typography.Text>
+            <div className="person__mail">{m.email}</div>
           </div>
-        </Space>
+        </div>
       ),
     },
     {
@@ -156,33 +150,26 @@ export default function UsersPage() {
       title: 'Роль',
       sorter: true,
       sortOrder: sortOrderFor('role'),
-      width: 200,
-      render: (_, m) => (
-        <div>
-          <RoleTag role={m.role} />
-          {m.position && (
-            <Typography.Text type="secondary" ellipsis={{ tooltip: m.position }} style={{ display: 'block', fontSize: 12, maxWidth: 180 }}>
-              {m.position}
-            </Typography.Text>
-          )}
-        </div>
-      ),
+      width: 210,
+      render: (_, m) => <RoleTag role={m.role} position={m.position} />,
     },
     {
       key: 'branches',
-      title: 'Филиалы',
+      title: 'Филиал',
       width: 240,
       responsive: ['md'],
       render: (_, m) => {
-        if (!m.branches.length) return <Typography.Text type="secondary">—</Typography.Text>
+        if (!m.branches.length) return <span className="muted">Не назначен</span>
         const [first, ...rest] = m.branches
         return (
-          <Space size={4} wrap>
-            <Tag>{first.name}</Tag>
+          <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span>{first.name}</span>
             {rest.length > 0 && (
-              <Tooltip title={rest.map((b) => b.name).join(', ')}><Tag>+{rest.length}</Tag></Tooltip>
+              <Tooltip title={rest.map((b) => b.name).join(', ')}>
+                <span className="chip">+{rest.length}</span>
+              </Tooltip>
             )}
-          </Space>
+          </span>
         )
       },
     },
@@ -191,7 +178,7 @@ export default function UsersPage() {
       title: 'Статус',
       sorter: true,
       sortOrder: sortOrderFor('status'),
-      width: 140,
+      width: 150,
       render: (_, m) => <StatusBadge status={m.status} />,
     },
     {
@@ -199,13 +186,13 @@ export default function UsersPage() {
       title: 'Добавлен',
       sorter: true,
       sortOrder: sortOrderFor('joined_at'),
-      width: 130,
+      width: 140,
       responsive: ['lg'],
-      render: (_, m) => formatDate(m.joined_at),
+      render: (_, m) => <span className="num" style={{ color: 'var(--text-2)' }}>{formatDate(m.joined_at)}</span>,
     },
     {
       key: 'actions',
-      width: 56,
+      width: 52,
       align: 'right',
       render: (_, m) => (
         <Dropdown
@@ -216,14 +203,14 @@ export default function UsersPage() {
               ...(canManage ? [
                 { key: 'edit', icon: <EditOutlined />, label: 'Изменить', disabled: !m.can_manage, onClick: () => openEdit(m) },
                 { type: 'divider' as const },
-                { key: 'delete', icon: <DeleteOutlined />, label: 'Удалить', danger: true, disabled: !m.can_manage,
-                  onClick: () => confirmDelete(m) },
+                { key: 'delete', icon: <DeleteOutlined />, label: 'Удалить из организации', danger: true,
+                  disabled: !m.can_manage, onClick: () => confirmDelete(m) },
               ] : []),
             ],
             onClick: ({ domEvent }) => domEvent.stopPropagation(),
           }}
         >
-          <Button type="text" icon={<MoreOutlined />} aria-label="Действия" onClick={(e) => e.stopPropagation()} />
+          <Button type="text" size="small" icon={<MoreOutlined />} aria-label="Действия" onClick={(e) => e.stopPropagation()} />
         </Dropdown>
       ),
     },
@@ -242,24 +229,45 @@ export default function UsersPage() {
     }
   }
 
+  const header = (
+    <>
+      <div className="crumbs">{org.name} <span style={{ margin: '0 6px' }}>/</span> <b>Пользователи</b></div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 16, flexWrap: 'wrap' }}>
+        <h1 className="page-title">Пользователи</h1>
+        {canRead && canManage && (
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setFormState({ open: true })}>
+            Добавить
+          </Button>
+        )}
+      </div>
+    </>
+  )
+
   if (!canRead) {
     return (
-      <Card>
-        <Result status="403" title="Нет доступа"
-          subTitle={`Ваша роль «${org.role.name}» в организации «${org.name}» не позволяет просматривать пользователей.`} />
-      </Card>
+      <>
+        {header}
+        <div className="sheet" style={{ marginTop: 24 }}>
+          <Result status="403" title="Нет доступа"
+            subTitle={`Роль «${org.role.name}» в «${org.name}» не позволяет просматривать пользователей. Обратитесь к администратору организации.`} />
+        </div>
+      </>
     )
   }
 
+  const counts = data?.status_counts
+  const allCount = counts ? counts.active + counts.invited + counts.suspended : undefined
+  const activeStatus = params.status?.length === 1 ? params.status[0] : undefined
+
   const emptyState = hasFilters ? (
-    <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="По заданным условиям никого не найдено">
-      <Button onClick={() => { setSearchText(''); reset() }}>Сбросить фильтры</Button>
+    <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Никого не нашли по этим условиям" style={{ padding: '32px 0' }}>
+      <Button onClick={resetAll}>Сбросить фильтры</Button>
     </Empty>
   ) : (
-    <Empty description="В организации пока нет пользователей">
+    <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="В организации пока никого нет" style={{ padding: '32px 0' }}>
       {canManage && (
         <Button type="primary" icon={<PlusOutlined />} onClick={() => setFormState({ open: true })}>
-          Добавить первого пользователя
+          Добавить первого сотрудника
         </Button>
       )}
     </Empty>
@@ -267,58 +275,55 @@ export default function UsersPage() {
 
   return (
     <>
-      <Flex justify="space-between" align="center" wrap gap={12} style={{ marginBottom: 16 }}>
-        <div>
-          <Typography.Title level={3} style={{ margin: 0 }}>
-            Пользователи
-            {data && <Typography.Text type="secondary" style={{ fontSize: 16, fontWeight: 400, marginLeft: 8 }}>{data.total}</Typography.Text>}
-          </Typography.Title>
-          <Typography.Text type="secondary">{org.name}</Typography.Text>
-        </div>
-        {canManage && (
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setFormState({ open: true })}>
-            Добавить пользователя
-          </Button>
-        )}
-      </Flex>
+      {header}
 
-      <Card styles={{ body: { padding: 0 } }}>
-        <Flex gap={8} wrap style={{ padding: 16, borderBottom: '1px solid #f0f0f0' }}>
-          <Input
-            allowClear
-            prefix={<SearchOutlined />}
-            placeholder="Поиск по имени, email, должности"
-            value={searchText}
-            onChange={(e) => setSearchText(e.target.value)}
-            style={{ flex: '1 1 260px', maxWidth: 360 }}
-            maxLength={100}
-          />
-          <Select
-            mode="multiple" allowClear maxTagCount="responsive" placeholder="Роль"
-            style={{ flex: '1 1 160px', maxWidth: 220 }}
-            loading={roles.isLoading}
-            value={params.role_id}
-            onChange={(v) => update({ role_id: v })}
-            options={roles.data?.map((r) => ({ value: r.id, label: r.name }))}
-          />
-          <Select
-            mode="multiple" allowClear maxTagCount="responsive" placeholder="Филиал" optionFilterProp="label"
-            style={{ flex: '1 1 180px', maxWidth: 260 }}
-            loading={branches.isLoading}
-            value={params.branch_id}
-            onChange={(v) => update({ branch_id: v })}
-            options={branches.data?.map((b) => ({ value: b.id, label: `${b.name} (${b.members_count})` }))}
-          />
-          <Select
-            mode="multiple" allowClear maxTagCount="responsive" placeholder="Статус"
-            style={{ flex: '1 1 140px', maxWidth: 200 }}
-            value={params.status}
-            onChange={(v) => update({ status: v })}
-            options={(Object.keys(STATUS_META) as MembershipStatus[]).map((s) => ({ value: s, label: STATUS_META[s].label }))}
-          />
-          {hasFilters && <Button type="link" onClick={() => { setSearchText(''); reset() }}>Сбросить</Button>}
-        </Flex>
+      <div className="tabs" role="tablist" aria-label="Статус">
+        <button type="button" role="tab" className="tab" aria-selected={!params.status?.length}
+          onClick={() => update({ status: [] })}>
+          Все <span className="tab__n num">{allCount ?? '·'}</span>
+        </button>
+        {STATUSES.map((st) => (
+          <button key={st} type="button" role="tab" className="tab" aria-selected={activeStatus === st}
+            onClick={() => update({ status: [st] })}>
+            {STATUS_META[st].plural} <span className="tab__n num">{counts?.[st] ?? '·'}</span>
+          </button>
+        ))}
+      </div>
 
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+        <Input
+          allowClear
+          prefix={<SearchOutlined className="muted" />}
+          placeholder="Имя, email или должность"
+          value={searchText}
+          onChange={(e) => setSearchText(e.target.value)}
+          style={{ flex: '1 1 260px', maxWidth: 340 }}
+          maxLength={100}
+        />
+        <Select
+          mode="multiple" allowClear maxTagCount="responsive" placeholder="Все роли"
+          style={{ flex: '1 1 160px', maxWidth: 220 }}
+          loading={roles.isLoading}
+          value={params.role_id}
+          onChange={(v) => update({ role_id: v })}
+          options={roles.data?.map((r) => ({ value: r.id, label: r.name }))}
+        />
+        <Select
+          mode="multiple" allowClear maxTagCount="responsive" placeholder="Все филиалы" optionFilterProp="label"
+          style={{ flex: '1 1 180px', maxWidth: 260 }}
+          loading={branches.isLoading}
+          value={params.branch_id}
+          onChange={(v) => update({ branch_id: v })}
+          options={branches.data?.map((b) => ({ value: b.id, label: b.name }))}
+          optionRender={(o) => {
+            const b = branches.data?.find((x) => x.id === o.value)
+            return <span style={{ display: 'flex', justifyContent: 'space-between' }}>{o.label}<span className="muted num">{b?.members_count}</span></span>
+          }}
+        />
+        {hasFilters && <Button type="text" icon={<CloseOutlined />} onClick={resetAll}>Сбросить</Button>}
+      </div>
+
+      <div className="sheet">
         {members.isError && !data ? (
           <Result
             status="error"
@@ -336,26 +341,25 @@ export default function UsersPage() {
             showSorterTooltip={false}
             onRow={(m) => ({ onClick: () => setViewId(m.user_id), style: { cursor: 'pointer' } })}
             locale={{ emptyText: members.isLoading ? ' ' : emptyState }}
-            scroll={{ x: 640 }}
+            scroll={{ x: 680 }}
             pagination={{
               current: params.page,
               pageSize: params.page_size,
               total: data?.total ?? 0,
               pageSizeOptions: PAGE_SIZES,
               showSizeChanger: true,
-              showTotal: (total, [from, to]) => `${from}–${to} из ${total}`,
+              showTotal: (total, [from, to]) => <span className="muted num">{from}–{to} из {total}</span>,
               hideOnSinglePage: false,
-              style: { padding: '0 16px' },
             }}
           />
         )}
         {members.isError && data && (
-          <Typography.Paragraph type="danger" style={{ padding: '0 16px 16px' }}>
-            Не удалось обновить данные: {members.error.message}{' '}
-            <Typography.Link onClick={() => members.refetch()}>Повторить</Typography.Link>
-          </Typography.Paragraph>
+          <div style={{ padding: '0 16px 16px', color: 'var(--bad)' }}>
+            Не удалось обновить данные: {members.error.message}.{' '}
+            <a onClick={() => members.refetch()}>Повторить</a>
+          </div>
         )}
-      </Card>
+      </div>
 
       <MemberDrawer
         orgId={org.id}

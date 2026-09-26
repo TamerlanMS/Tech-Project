@@ -99,7 +99,15 @@ def _load_options():
     )
 
 
-def list_members(db: Session, ctx: OrgContext, f: MemberFilters) -> tuple[list[MemberOut], int]:
+def list_members(
+    db: Session, ctx: OrgContext, f: MemberFilters
+) -> tuple[list[MemberOut], int, dict[str, int]]:
+    """Возвращает (страница, total, счётчики по статусам).
+
+    Счётчики считаются с учётом поиска/роли/филиала, но без фильтра по статусу —
+    чтобы вкладки «Все / Активные / Приглашённые / Заблокированные» показывали,
+    сколько записей окажется на каждой из них.
+    """
     stmt = _base_query(ctx)
 
     if f.search:
@@ -111,8 +119,6 @@ def list_members(db: Session, ctx: OrgContext, f: MemberFilters) -> tuple[list[M
         )
     if f.role_ids:
         stmt = stmt.where(Membership.role_id.in_(f.role_ids))
-    if f.statuses:
-        stmt = stmt.where(Membership.status.in_([s.value for s in f.statuses]))
     if f.branch_ids:
         stmt = stmt.where(
             exists().where(
@@ -122,7 +128,16 @@ def list_members(db: Session, ctx: OrgContext, f: MemberFilters) -> tuple[list[M
             )
         )
 
-    total = db.scalar(select(func.count()).select_from(stmt.order_by(None).subquery())) or 0
+    facet_sq = stmt.with_only_columns(Membership.status).order_by(None).subquery()
+    counts = {s.value: 0 for s in MembershipStatus}
+    for status, n in db.execute(select(facet_sq.c.status, func.count()).group_by(facet_sq.c.status)):
+        counts[status] = n
+
+    if f.statuses:
+        stmt = stmt.where(Membership.status.in_([s.value for s in f.statuses]))
+        total = sum(counts[s.value] for s in set(f.statuses))
+    else:
+        total = sum(counts.values())
 
     col = SORT_COLUMNS[f.sort_by]
     order = col.asc() if f.sort_order == SortOrder.asc else col.desc()
@@ -134,7 +149,7 @@ def list_members(db: Session, ctx: OrgContext, f: MemberFilters) -> tuple[list[M
         .offset((f.page - 1) * f.page_size)
     )
     items = [to_member_out(ctx, m) for m in db.scalars(stmt).unique()]
-    return items, total
+    return items, total, counts
 
 
 def _get_membership(db: Session, ctx: OrgContext, user_id: UUID, *, for_update: bool = False) -> Membership:

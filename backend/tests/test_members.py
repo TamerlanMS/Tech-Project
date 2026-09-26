@@ -52,6 +52,18 @@ def test_filters_role_branch_status(client, world, db):
     assert r["total"] == 0
 
 
+def test_status_counts_ignore_status_filter(client, world, db):
+    add_member(db, world.org_a, make_user(db, "inv1@a.kz", "Inv One", password=False), "employee", status="invited")
+    add_member(db, world.org_a, make_user(db, "susp@a.kz", "Susp", ), "employee", status="suspended")
+    db.commit()
+    h = world.headers(world.admin)
+    r = client.get(world.url(), headers=h, params={"status": "suspended"}).json()
+    assert r["total"] == 1
+    assert r["status_counts"] == {"active": 4, "invited": 1, "suspended": 1}
+    r = client.get(world.url(), headers=h, params={"search": "inv"}).json()
+    assert r["status_counts"] == {"active": 0, "invited": 1, "suspended": 0}
+
+
 def test_list_is_tenant_scoped(client, world):
     emails = {m["email"] for m in client.get(world.url(), headers=world.headers(world.admin)).json()["items"]}
     assert "owner@b.kz" not in emails and len(emails) == 4

@@ -6,7 +6,9 @@ from fastapi import APIRouter, Depends, Query, Response, status
 from app.api.deps import DB, require_permission
 from app.models import MembershipStatus
 from app.permissions import P
-from app.schemas import MemberCreateIn, MemberDetailOut, MemberOut, MemberSortField, MemberUpdateIn, Page, SortOrder
+from app.schemas import (
+    MemberCreateIn, MemberDetailOut, MemberOut, MemberPage, MemberSortField, MemberUpdateIn, Page, SortOrder,
+)
 from app.services import members as svc
 from app.services.access import OrgContext
 
@@ -16,7 +18,7 @@ CanRead = Annotated[OrgContext, Depends(require_permission(P.USERS_READ))]
 CanManage = Annotated[OrgContext, Depends(require_permission(P.USERS_MANAGE))]
 
 
-@router.get("", response_model=Page[MemberOut])
+@router.get("", response_model=MemberPage)
 def list_users(
     ctx: CanRead,
     db: DB,
@@ -33,8 +35,9 @@ def list_users(
         search=search or None, role_ids=role_id, branch_ids=branch_id, statuses=status_,
         sort_by=sort_by, sort_order=sort_order, page=page, page_size=page_size,
     )
-    items, total = svc.list_members(db, ctx, filters)
-    return Page[MemberOut].build(items, total, page, page_size)
+    items, total, counts = svc.list_members(db, ctx, filters)
+    base = Page[MemberOut].build(items, total, page, page_size)
+    return MemberPage(**base.model_dump(), status_counts=counts)
 
 
 @router.get("/{user_id}", response_model=MemberDetailOut)
